@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="bs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Flappy XXX banka</title>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden;background:#bfe9ff;}
+    canvas{display:block;background:linear-gradient(#bfe9ff,#87ceeb);}
+    p{text-align:center;font-family:sans-serif;color:#033;font-size:16px;margin-top:10px;}
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <p>Dodirnite ekran za skok — igricu omogućili Mahir, Tarik i Bakir 🌱</p>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let W = window.innerWidth, H = window.innerHeight;
+    canvas.width = W; 
+    canvas.height = H;
+
+    let frames = 0, score = 0, gameState = 'start';
+    const bird = {x: W*0.25, y: H/2, r: H*0.04, vy:0, gravity: H*0.0012, jump: -H*0.018};
+    const pipeWidth = W*0.12; 
+    const gapMin = H*0.28; 
+    const gapMax = H*0.38;
+    let pipes = [];
+    const clouds = Array.from({length:4},()=>({x:Math.random()*W,y:Math.random()*H*0.3,s:1+Math.random()*2}));
+
+    function random(min,max){return Math.floor(Math.random()*(max-min+1))+min}
+    function reset(){score=0;frames=0;gameState='start';bird.y=H/2;bird.vy=0;pipes=[];}
+
+    function spawnPipe(){
+      const gap=random(gapMin,gapMax);
+      const top=random(H*0.1,H*0.7-gap);
+      pipes.push({x:W+pipeWidth,top, gap, passed:false});
+    }
+
+    function drawBackground(){
+      // nebo
+      ctx.fillStyle = '#bfe9ff';
+      ctx.fillRect(0,0,W,H);
+
+      // oblaci
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      clouds.forEach(c=>{
+        ctx.beginPath();
+        ctx.ellipse(c.x,c.y,60,25,0,0,Math.PI*2);
+        ctx.fill();
+        c.x -= c.s * 0.3;
+        if(c.x<-80){c.x=W+80;c.y=Math.random()*H*0.3;}
+      });
+
+      // brežuljci
+      ctx.fillStyle = '#6bbf59';
+      ctx.beginPath();
+      ctx.moveTo(0,H*0.8);
+      for(let i=0;i<=W;i+=50){
+        ctx.lineTo(i,H*0.8+Math.sin(i*0.004)*20);
+      }
+      ctx.lineTo(W,H);
+      ctx.lineTo(0,H);
+      ctx.closePath();
+      ctx.fill();
+
+      // solarni paneli
+      const panelCount = 4;
+      for(let i=0;i<panelCount;i++){
+        const x = W*0.15 + i*(W*0.18);
+        const y = H*0.75;
+        ctx.fillStyle = '#1a1f71';
+        ctx.fillRect(x,y,80,40);
+        ctx.fillStyle = '#7fbfff';
+        for(let r=0;r<2;r++){
+          for(let c=0;c<3;c++){
+            ctx.fillRect(x+5+c*23,y+5+r*15,18,12);
+          }
+        }
+        ctx.strokeStyle = '#000';
+        ctx.strokeRect(x,y,80,40);
+        ctx.beginPath();
+        ctx.moveTo(x+40,y+40);
+        ctx.lineTo(x+40,y+60);
+        ctx.stroke();
+      }
+
+      // vjetrenjače
+      const turbines = [{x:W*0.2,y:H*0.7},{x:W*0.6,y:H*0.68},{x:W*0.85,y:H*0.72}];
+      turbines.forEach(t=>{
+        ctx.strokeStyle='#ccc';
+        ctx.lineWidth=4;
+        ctx.beginPath();
+        ctx.moveTo(t.x,t.y);
+        ctx.lineTo(t.x,t.y-80);
+        ctx.stroke();
+
+        // lopatice
+        ctx.save();
+        ctx.translate(t.x,t.y-80);
+        ctx.rotate((frames/60) % (2*Math.PI));
+        for(let i=0;i<3;i++){
+          ctx.rotate((2*Math.PI)/3);
+          ctx.beginPath();
+          ctx.moveTo(0,0);
+          ctx.lineTo(0,-30);
+          ctx.lineWidth=3;
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+    }
+
+    function drawWatermark(){
+      ctx.save();
+      ctx.translate(W/2,H/2);
+      ctx.rotate(-0.3);
+      ctx.globalAlpha=0.06;
+      ctx.fillStyle='#000';
+      ctx.font=`${H*0.25}px serif`;
+      ctx.textAlign='center';
+      ctx.fillText('Nijemci',0,0);
+      ctx.restore();
+      ctx.globalAlpha=1;
+    }
+
+    function drawBanker(){
+      ctx.save();
+      ctx.translate(bird.x,bird.y);
+      ctx.rotate(Math.min(Math.max(bird.vy/10,-0.6),0.6));
+
+      // tijelo (sako)
+      ctx.beginPath();
+      ctx.arc(0,0,bird.r,0,Math.PI*2);
+      ctx.fillStyle='#1b2a3a';
+      ctx.fill();
+
+      // glava
+      ctx.beginPath();
+      ctx.arc(0,-bird.r*1.1,bird.r*0.55,0,Math.PI*2);
+      ctx.fillStyle='#fdd5b1';
+      ctx.fill();
+
+      // oči
+      ctx.fillStyle='black';
+      ctx.beginPath();
+      ctx.arc(-bird.r*0.18,-bird.r*1.2,bird.r*0.1,0,Math.PI*2);
+      ctx.arc(bird.r*0.18,-bird.r*1.2,bird.r*0.1,0,Math.PI*2);
+      ctx.fill();
+
+      // osmijeh
+      ctx.strokeStyle='black';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.arc(0,-bird.r*1,bird.r*0.25,0,Math.PI);
+      ctx.stroke();
+
+      // kravata
+      ctx.beginPath();
+      ctx.moveTo(0,-bird.r*0.3);
+      ctx.lineTo(-bird.r*0.15,bird.r*0.4);
+      ctx.lineTo(bird.r*0.15,bird.r*0.4);
+      ctx.closePath();
+      ctx.fillStyle='red';
+      ctx.fill();
+
+      // kapa
+      ctx.fillStyle='#0c1d2b';
+      ctx.fillRect(-bird.r*0.5,-bird.r*1.65,bird.r, bird.r*0.25);
+      ctx.fillStyle='#fff';
+      ctx.font=`bold ${bird.r*0.4}px sans-serif`;
+      ctx.textAlign='center';
+      ctx.fillText('XXX',0,-bird.r*1.45);
+
+      // tekst na tijelu
+      ctx.fillStyle='white';
+      ctx.font=`bold ${bird.r*0.6}px sans-serif`;
+      ctx.fillText('BANKA',0,bird.r*0.8);
+      ctx.restore();
+    }
+
+    function drawPipe(p){
+      ctx.fillStyle='#1b6f8b';
+      ctx.fillRect(p.x,0,pipeWidth,p.top);
+      const by=p.top+p.gap;
+      ctx.fillRect(p.x,by,pipeWidth,H-by);
+      ctx.fillStyle='rgba(255,255,255,0.95)';
+      ctx.font=`bold ${H*0.035}px sans-serif`;
+      ctx.textAlign='center';
+      ctx.fillText('ProChamp',p.x+pipeWidth/2,Math.max(40,p.top-8));
+      ctx.fillText('ProChamp',p.x+pipeWidth/2,by+40);
+    }
+
+    function update(){
+      frames++;
+      if(gameState==='playing'){
+        if(frames%90===0)spawnPipe();
+        for(let i=pipes.length-1;i>=0;i--){
+          const p=pipes[i];
+          p.x-=W*0.0045;
+          if(!p.passed&&p.x+pipeWidth<bird.x){p.passed=true;score++;}
+          if(p.x+pipeWidth<0)pipes.splice(i,1);
+        }
+        bird.vy+=bird.gravity;
+        bird.y+=bird.vy;
+        if(bird.y+bird.r>=H||bird.y-bird.r<=0)gameState='over';
+        for(const p of pipes){
+          if(bird.x+bird.r>p.x&&bird.x-bird.r<p.x+pipeWidth){
+            if(bird.y-bird.r<p.top||bird.y+bird.r>p.top+p.gap)gameState='over';
+          }
+        }
+      }
+    }
+
+    function render(){
+      ctx.clearRect(0,0,W,H);
+      drawBackground();
+      drawWatermark();
+      for(const p of pipes)drawPipe(p);
+      drawBanker();
+      ctx.fillStyle='#052a3a';
+      ctx.font=`bold ${H*0.06}px sans-serif`;
+      ctx.textAlign='left';
+      ctx.fillText('Score: '+score,20,50);
+      if(gameState==='start'){
+        ctx.fillStyle='rgba(2,20,30,0.85)';
+        ctx.font=`${H*0.04}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.fillText('Klikni mišem da započneš',W/2,H/2-20);
+      }
+      if(gameState==='over'){
+        ctx.fillStyle='rgba(0,0,0,0.5)';
+        ctx.fillRect(W/2-150,H/2-60,300,120);
+        ctx.fillStyle='#fff';
+        ctx.font=`${H*0.04}px sans-serif`;
+        ctx.textAlign='center';
+        ctx.fillText('Kraj igre',W/2,H/2-10);
+        ctx.font=`${H*0.03}px sans-serif`;
+        ctx.fillText('Rezultat: '+score,W/2,H/2+25);
+        ctx.fillText('Klikni da pokušaš ponovo',W/2,H/2+55);
+      }
+    }
+
+    function flap(){
+      if(gameState==='start'||gameState==='over'){
+        reset();
+        gameState='playing';
+      }
+      bird.vy=bird.jump;
+    }
+
+    canvas.addEventListener('mousedown',flap);
+    canvas.addEventListener('touchstart',e=>{e.preventDefault();flap();},{passive:false});
+    window.addEventListener('resize',()=>{W=window.innerWidth;H=window.innerHeight;canvas.width=W;canvas.height=H;});
+
+    function loop(){update();render();requestAnimationFrame(loop);}
+    loop();
+  </script>
+</body>
+</html>
